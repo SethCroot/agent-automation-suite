@@ -1,0 +1,31 @@
+# Config with secrets
+config/config.yaml
+config/config.*.yaml
+!config/config.example.yaml
+
+# Environment files
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# State files
+state/
+*.state
+*.lock
+.*-state
+.*-state.json
+
+# Backups
+backups/
+*.gpg
+*.tar.gz
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,76 @@
+# Agent Automation Suite — Configuration
+#
+# Copy this file to config.yaml and edit with your values.
+# config.yaml is gitignored and should never be committed.
+
+# CalDAV server (Radicale, Nextcloud, Baikal, etc.)
+caldav:
+  url: https://cal.example.com
+  username: your_username
+  password: your_password
+  # UTC offset for local time display (e.g., 10 for AEST, -8 for PST)
+  timezone_offset: 10
+  # Calendar paths on the CalDAV server
+  calendars:
+    personal:
+      path: /user/personal/
+      emoji: 🔵
+    work:
+      path: /user/work/
+      emoji: 🟢
+
+# Obsidian vault (or any markdown notes vault)
+vault:
+  path: ~/notes-vault
+  daily_notes_dir: 01-Daily
+  projects_dir: Projects
+  # Canonical top-level directories (for maintenance checks)
+  canonical_dirs:
+    - 00-Inbox
+    - 01-Daily
+    - 02-Projects
+    - 03-Knowledge
+    - 04-Archive
+
+# Agent platform configuration
+agent:
+  home: ~/.agent
+  config_file: ~/.agent/config.yaml
+  memory_file: ~/.agent/memories/MEMORY.md
+  state_dir: ~/.agent/scripts/state
+  gateway_service: agent-gateway
+  sync_service: obsidian-sync
+
+# Backup configuration
+backup:
+  root: ~/backups
+  # GPG passphrase file for encrypted backups
+  passphrase_file: ~/.agent/.backup-pass
+  retention_days: 30
+  # Additional directories to back up
+  extra_paths: []
+  # - /path/to/project
+
+# Monitoring
+monitoring:
+  # Network host to ping for connectivity check
+  network_check_ip: 127.0.0.1
+  # Stale threshold for sync watchdog (minutes)
+  sync_stale_minutes: 35
+
+# Memory TTL (for agent memory lifecycle)
+memory_ttl:
+  max_age_days: 7
+  # Entries matching these prefixes never expire
+  permanent_prefixes:
+    - "NEVER disable"
+    - "Vault at"
+
+# Kanban / project tracking
+kanban:
+  # Status values used in project frontmatter
+  statuses:
+    - Idea
+    - In Progress
+    - Blocked
+    - Done
