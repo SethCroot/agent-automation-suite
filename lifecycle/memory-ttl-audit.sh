@@ -25,16 +25,17 @@ TTL_DAYS="${CFG_MEMORY_TTL_MAX_AGE_DAYS:-7}"
 TODAY=$(date +%Y-%m-%d)
 
 # Permanent entry prefixes — configured in config.yaml
-# These never expire regardless of age
+# These never expire regardless of age.
+# Config is the source of truth: regenerate the state file each run so
+# prefix changes in config.yaml take effect (issue #3 — previously the
+# file was written once and config changes were ignored forever after).
 PERMANENT_FILE="${SCRIPT_DIR}/../state/permanent-prefixes.txt"
-if [ ! -f "$PERMANENT_FILE" ]; then
-    # Fall back to config-provided prefixes
-    mkdir -p "$SCRIPT_DIR/../state"
-    # Write permanent prefixes from config if available
+mkdir -p "$(dirname "$PERMANENT_FILE")"
+if [ -n "${CFG_MEMORY_TTL_PERMANENT_PREFIXES:-}" ] || [ -n "${CFG_MEMORY_TTL_PERMANENT_PREFIXES_0:-}" ]; then
     for prefix in "${!CFG_MEMORY_TTL_PERMANENT_PREFIXES_@}"; do
         [ -z "${!prefix:-}" ] && continue
         echo "${!prefix}"
-    done > "$PERMANENT_FILE" 2>/dev/null || true
+    done > "$PERMANENT_FILE"
 fi
 
 # Ensure state directory exists
