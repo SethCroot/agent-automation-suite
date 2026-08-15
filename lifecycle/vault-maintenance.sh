@@ -14,7 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
-load_config "${1:-}"
+load_config "$(parse_config_flag "$@")"
 
 VAULT=$(resolve_path "${CFG_VAULT_PATH:-$HOME/notes-vault}")
 TODAY=$(date +%Y-%m-%d)

@@ -14,7 +14,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
-load_config "${1:-}"
+load_config "$(parse_config_flag "$@")"
 
 VAULT_PATH=$(resolve_path "${CFG_VAULT_PATH:-$HOME/notes-vault}")
 BACKUP_ROOT=$(resolve_path "${CFG_BACKUP_ROOT:-$HOME/backups}")
@@ -34,11 +34,13 @@ echo "=== Starting backup at $TIMESTAMP ==="
 # ─── 1. Vault backup (encrypted) ─────────────────────────────────────
 echo "[1/3] Backing up vault..."
 if [ -n "$PASSPHRASE_FILE" ] && [ -f "$PASSPHRASE_FILE" ]; then
-    tar -czf - "$VAULT_PATH" 2>/dev/null | \
+    # Run the tar|gpg pipeline with set -e suspended so the failure branch
+    # below is actually reachable (previously set -e killed the script on a
+    # failed pipeline, making "Vault backup failed" dead code — issue #8)
+    if tar -czf - "$VAULT_PATH" 2>/dev/null | \
         gpg --batch --yes --cipher-algo AES256 --compress-algo 1 \
             --symmetric --passphrase-file "$PASSPHRASE_FILE" \
-            > "$BACKUP_ROOT/vault/vault-$DATE.tar.gz.gpg"
-    if [ $? -eq 0 ]; then
+            > "$BACKUP_ROOT/vault/vault-$DATE.tar.gz.gpg"; then
         SIZE=$(du -h "$BACKUP_ROOT/vault/vault-$DATE.tar.gz.gpg" | cut -f1)
         echo "✓ Vault backup complete: $SIZE"
     else

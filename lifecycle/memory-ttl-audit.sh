@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
-load_config "${1:-}"
+load_config "$(parse_config_flag "$@")"
 
 MEMORY_FILE=$(resolve_path "${CFG_AGENT_MEMORY_FILE:-$HOME/.agent/memories/MEMORY.md}")
 STATE_FILE="$SCRIPT_DIR/../state/.memory-ttl-state.json"
@@ -129,6 +129,37 @@ print((d2 - d1).days)
         MIGRATED="${MIGRATED}\n→ Migrated to: $(basename "$MIGRATION_FILE")"
     fi
 done
+
+# Prune state entries whose buffer entries no longer exist (issue #8):
+# without this, state/.memory-ttl-state.json grows forever.
+python3 - "$MEMORY_FILE" "$STATE_FILE" <<'PYEOF' 2>/dev/null || true
+import hashlib
+import json
+import sys
+
+memory_file, state_file = sys.argv[1], sys.argv[2]
+try:
+    with open(memory_file) as f:
+        entries = [line.rstrip("\n") for line in f]
+except FileNotFoundError:
+    sys.exit(0)
+# Mirror the main loop's entry filtering: skip empty lines and bare delimiters
+seen = set()
+for entry in entries:
+    if not entry or entry == "§":
+        continue
+    seen.add(hashlib.md5(entry.encode()).hexdigest()[:12])
+try:
+    with open(state_file) as f:
+        state = json.load(f)
+except Exception:
+    sys.exit(0)
+before = len(state.get("entries", {}))
+state["entries"] = {h: v for h, v in state.get("entries", {}).items() if h in seen}
+if len(state["entries"]) != before:
+    with open(state_file, "w") as f:
+        json.dump(state, f, indent=2)
+PYEOF
 
 # Output report (silent if nothing expired)
 if [ -z "$FLAGGED" ]; then

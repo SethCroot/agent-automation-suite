@@ -12,14 +12,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
-load_config "${1:-}"
+load_config "$(parse_config_flag "$@")"
 
 SYNC_SERVICE="${CFG_AGENT_SYNC_SERVICE:-obsidian-sync}"
 STALE_MINUTES="${CFG_MONITORING_SYNC_STALE_MINUTES:-35}"
 VERIFY_WAIT=10
 
 # Check if the service has logged a successful sync recently
-LAST_SYNC=$(journalctl --user -u "$SYNC_SERVICE" --since "$STALE_MINUTES minutes ago" --no-pager 2>/dev/null | grep -c "Fully synced\|Connection successful\|sync complete")
+# (grep -c prints 0 but exits 1 on no match; || true keeps set -e/pipefail from
+#  killing the script before the restart logic can run — cf. issue #1)
+LAST_SYNC=$(journalctl --user -u "$SYNC_SERVICE" --since "$STALE_MINUTES minutes ago" --no-pager 2>/dev/null | grep -c "Fully synced\|Connection successful\|sync complete" || true)
 
 if [ "$LAST_SYNC" -eq 0 ]; then
     echo "🔴 Sync Watchdog: no sync activity in ${STALE_MINUTES}min — force restarting ${SYNC_SERVICE}"
@@ -29,7 +31,8 @@ if [ "$LAST_SYNC" -eq 0 ]; then
     sleep "$VERIFY_WAIT"
 
     # Verify it recovered
-    CONNECTED=$(journalctl --user -u "$SYNC_SERVICE" --since "$((VERIFY_WAIT + 2)) seconds ago" --no-pager 2>/dev/null | grep -c "Connection successful\|Fully synced\|sync complete")
+    # (|| true for the same grep -c / pipefail reason as above)
+    CONNECTED=$(journalctl --user -u "$SYNC_SERVICE" --since "$((VERIFY_WAIT + 2)) seconds ago" --no-pager 2>/dev/null | grep -c "Connection successful\|Fully synced\|sync complete" || true)
     if [ "$CONNECTED" -gt 0 ]; then
         echo "✅ Sync Watchdog: restart successful, ${SYNC_SERVICE} is active again"
     else

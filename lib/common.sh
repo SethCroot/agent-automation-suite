@@ -6,6 +6,36 @@ set -euo pipefail
 
 # ─── Config loading ──────────────────────────────────────────────────
 
+# Parse a --config flag from the script's arguments and echo the config path
+# (or the empty string when none given). Usage in each script:
+#   load_config "$(parse_config_flag "$@")"
+# Also accepts a bare path as the first argument for backwards compatibility.
+parse_config_flag() {
+    local args=("$@")
+    local i
+    for ((i = 0; i < ${#args[@]}; i++)); do
+        case "${args[$i]}" in
+            --config)
+                echo "${args[$((i + 1))]:-}"
+                return 0
+                ;;
+            --config=*)
+                echo "${args[$i]#--config=}"
+                return 0
+                ;;
+            -*)
+                # Unknown flags: skip so they don't get treated as paths
+                ;;
+            *)
+                # First bare argument = config path (legacy behaviour)
+                echo "${args[$i]}"
+                return 0
+                ;;
+        esac
+    done
+    echo ""
+}
+
 # Load YAML config into shell variables prefixed with CFG_
 # Usage: load_config /path/to/config.yaml
 load_config() {
@@ -41,20 +71,22 @@ resolve_path() {
 
 # ─── Lock files ──────────────────────────────────────────────────────
 
-# Acquire a lock to prevent concurrent runs
+# Acquire an exclusive lock to prevent concurrent runs.
+# Uses flock(1) so acquisition is atomic — the old check-then-write
+# pattern let two instances starting together both take the lock (issue #8).
 # Usage: acquire_lock /path/to/lockfile
 acquire_lock() {
     local lock_file="$1"
-    if [ -f "$lock_file" ]; then
-        local pid
-        pid=$(cat "$lock_file" 2>/dev/null || echo "")
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            echo "Another instance is running (PID $pid)" >&2
-            exit 0
-        fi
+    local lock_fd
+    # Open lock file for writing, keeping fd alive for the script's lifetime
+    lock_fd=9
+    eval "exec ${lock_fd}>\"$lock_file\"" || return 1
+    if ! flock -n "$lock_fd"; then
+        echo "Another instance is running" >&2
+        exit 0
     fi
-    echo $$ > "$lock_file"
-    trap 'rm -f "$lock_file"' EXIT
+    echo $$ >&"$lock_fd"
+    # Lock is released automatically when the script exits (fd closes)
 }
 
 # ─── Output formatting ───────────────────────────────────────────────
