@@ -13,7 +13,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/common.sh"
 
-load_config "${1:-}"
+load_config "$(parse_config_flag "$@")"
 
 VAULT_PATH=$(resolve_path "${CFG_VAULT_PATH:-$HOME/notes-vault}")
 PROJECTS_DIR="$VAULT_PATH/${CFG_VAULT_PROJECTS_DIR:-Projects}"
@@ -62,8 +62,10 @@ if [ -d "$PROJECTS_DIR" ]; then
         status=$(grep -m1 '^status:' "$f" | sed 's/^status:\s*//' | xargs 2>/dev/null || echo "unknown")
         owner=$(grep -m1 '^owner:' "$f" | sed 's/^owner:\s*//' | xargs 2>/dev/null || echo "unassigned")
 
-        total_tasks=$(grep -cE '^\s*- \[[ x]\]' "$f" 2>/dev/null || echo "0")
-        done_tasks=$(grep -cE '^\s*- \[x\]' "$f" 2>/dev/null || echo "0")
+        # grep -c already prints 0 on no match — || echo "0" appends a second
+        # line and breaks the arithmetic below — cf. issue #2
+        total_tasks=$(grep -cE '^\s*- \[[ x]\]' "$f" 2>/dev/null || true)
+        done_tasks=$(grep -cE '^\s*- \[x\]' "$f" 2>/dev/null || true)
         open_tasks=$((total_tasks - done_tasks))
 
         entry="• ${title} [${owner}] — ${open_tasks} open, ${done_tasks}/${total_tasks} done"
@@ -90,7 +92,7 @@ fi
 
 # ── 4. Service health ────────────────────────────────────────────────
 echo "**Service Health:**"
-recent_errors=$(journalctl --user -u "$GATEWAY_SERVICE" --since "1 hour ago" --no-pager 2>/dev/null | grep -c "ERROR" || echo "0")
+recent_errors=$(journalctl --user -u "$GATEWAY_SERVICE" --since "1 hour ago" --no-pager 2>/dev/null | grep -c "ERROR" || true)
 echo "  Gateway errors (last 1h): ${recent_errors}"
 echo ""
 
