@@ -78,10 +78,73 @@ def test_insert_after_frontmatter(daily_seed):
 def test_insert_without_frontmatter_prepends(daily_seed):
     content = "# Notes\n"
     result = daily_seed.insert_calendar_section(content, ["- **09:00** — Standup"])
-    assert result.startswith("## Calendar")
+    # Managed section is marker-delimited since issue #7
+    assert result.startswith("<!-- calendar:start -->")
+    assert "## Calendar" in result
     assert result.endswith("# Notes\n")
 
 
 def test_insert_with_no_events_is_a_noop(daily_seed):
     content = "---\ntype: daily\n---\n\n# Notes\n"
     assert daily_seed.insert_calendar_section(content, []) == content
+
+
+# ── refreshable managed section (issue #7) ───────────────────────────
+
+
+def test_update_refreshes_marked_block(daily_seed):
+    content = (
+        "---\ntype: daily\n---\n\n"
+        "<!-- calendar:start -->\n\n## Calendar\n\n"
+        "- **09:00** — Standup\n\n<!-- calendar:end -->\n\n"
+        "## Notes\n\nMy hand-written note\n"
+    )
+    updated = daily_seed.update_calendar_section(
+        content, ["- **10:00** — New meeting"]
+    )
+    assert "- **10:00** — New meeting" in updated
+    assert "Standup" not in updated
+    assert "My hand-written note" in updated  # outside markers untouched
+    assert updated.count("<!-- calendar:start -->") == 1
+
+
+def test_update_removes_block_when_no_events(daily_seed):
+    content = (
+        "---\ntype: daily\n---\n\n"
+        "<!-- calendar:start -->\n\n## Calendar\n\n"
+        "- **09:00** — Standup\n\n<!-- calendar:end -->\n\n"
+        "## Notes\n\nkeep me\n"
+    )
+    updated = daily_seed.update_calendar_section(content, [])
+    assert "calendar:start" not in updated
+    assert "Standup" not in updated
+    assert "keep me" in updated
+
+
+def test_update_migrates_legacy_section(daily_seed):
+    content = (
+        "---\ntype: daily\n---\n\n"
+        "## Calendar\n\n- **09:00** — Old event\n\n"
+        "## Notes\n\nbelow\n"
+    )
+    updated = daily_seed.update_calendar_section(
+        content, ["- **11:00** — Migrated"]
+    )
+    assert "<!-- calendar:start -->" in updated
+    assert "Migrated" in updated
+    assert "Old event" not in updated
+    assert "## Notes" in updated
+    assert "below" in updated
+
+
+def test_update_no_section_no_events_unchanged(daily_seed):
+    content = "---\ntype: daily\n---\n\nJust a note\n"
+    assert daily_seed.update_calendar_section(content, []) == content
+
+
+def test_update_inserts_into_fresh_note(daily_seed):
+    content = "---\ntype: daily\n---\n\nJust a note\n"
+    updated = daily_seed.update_calendar_section(content, ["- **08:00** — First"])
+    assert "## Calendar" in updated
+    assert "<!-- calendar:start -->" in updated
+    assert "Just a note" in updated

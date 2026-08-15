@@ -2,10 +2,17 @@
 """Calendar Daily Seed — injects today's calendar events into a daily note.
 
 Polls a CalDAV server for events occurring today and writes them into
-the day's markdown daily note under a ## Calendar section. Idempotent:
-skips notes that already have a Calendar section.
+the day's markdown daily note under a managed ## Calendar section,
+delimited by <!-- calendar:start --> / <!-- calendar:end --> markers.
 
-Designed for daily cron at 6am. Creates the daily note if it doesn't exist.
+Refreshable and idempotent: each run replaces the block between the
+markers with current events, so events added after the morning run show
+up on re-run (issue #7). Hand-edited content outside the markers is
+never touched. Legacy unmarked Calendar sections are migrated under
+markers on first refresh.
+
+Designed for cron — hourly refresh works, not just the 6am seed.
+Creates the daily note if it doesn't exist.
 
 Configuration:
     Reads from config/config.yaml (or path via --config).
@@ -190,12 +197,74 @@ def has_calendar_section(content: str) -> bool:
     return False
 
 
+CALENDAR_START = "<!-- calendar:start -->"
+CALENDAR_END = "<!-- calendar:end -->"
+
+
+def build_calendar_block(events_md: list[str]) -> str:
+    """Build the managed Calendar block, including markers."""
+    lines = [CALENDAR_START, "", "## Calendar", ""]
+    lines.extend(events_md)
+    lines.extend(["", CALENDAR_END])
+    return "\n".join(lines)
+
+
+def update_calendar_section(content: str, events_md: list[str]) -> str:
+    """Insert or refresh the managed Calendar section (issue #7).
+
+    - Markers present: replace the whole block with current events.
+      Events now empty → the block is removed entirely, so cancelled
+      events don't linger in the note.
+    - Legacy unmarked '## Calendar' section (pre-markers version):
+      migrated in place — the calendar is the source of truth for this
+      section, so its content is regenerated under markers.
+    - No section, no events: note returned unchanged.
+    - Content outside the markers is never touched.
+    """
+    if CALENDAR_START in content and CALENDAR_END in content:
+        start = content.index(CALENDAR_START)
+        end = content.index(CALENDAR_END) + len(CALENDAR_END)
+        if not events_md:
+            # Remove block and the trailing newline it occupied
+            removal_end = end
+            if removal_end < len(content) and content[removal_end] == "\n":
+                removal_end += 1
+            return content[:start] + content[removal_end:]
+        return content[:start] + build_calendar_block(events_md) + content[end:]
+
+    if has_calendar_section(content):
+        # Legacy section: replace heading..next-heading (or EOF) with the
+        # managed block. Only when there's something to show; an empty
+        # legacy section on an eventless day is left alone.
+        if not events_md:
+            return content
+        lines = content.split("\n")
+        start_idx = next(
+            i for i, ln in enumerate(lines) if ln.strip().startswith("## Calendar")
+        )
+        end_idx = len(lines)
+        for i in range(start_idx + 1, len(lines)):
+            if lines[i].startswith("## "):
+                end_idx = i
+                break
+        before = "\n".join(lines[:start_idx]).rstrip("\n")
+        after = "\n".join(lines[end_idx:]).strip("\n")
+        block = build_calendar_block(events_md)
+        parts = [p for p in (before, block, after) if p]
+        return "\n\n".join(parts) + "\n"
+
+    if not events_md:
+        return content
+
+    return insert_calendar_section(content, events_md)
+
+
 def insert_calendar_section(content: str, events_md: list[str]) -> str:
     """Insert Calendar section after frontmatter."""
     if not events_md:
         return content
 
-    calendar_md = "## Calendar\n\n" + "\n".join(events_md) + "\n"
+    calendar_md = build_calendar_block(events_md) + "\n"
 
     if content.startswith("---"):
         fm_end = content.find("---\n", 4)
@@ -228,10 +297,6 @@ def main() -> int:
     with open(note_path) as f:
         note_content = f.read()
 
-    if has_calendar_section(note_content):
-        print("Daily note already has Calendar section, skipping")
-        return 0
-
     # Collect today's events from all calendars
     all_events: list[str] = []
     for cal_id, cal_info in cfg["calendars"].items():
@@ -256,15 +321,18 @@ def main() -> int:
 
     all_events.sort()
 
-    if not all_events:
-        print("No events found for today")
+    updated = update_calendar_section(note_content, all_events)
+    if updated == note_content:
+        print("No calendar changes to write")
         return 0
 
-    updated = insert_calendar_section(note_content, all_events)
     with open(note_path, "w") as f:
         f.write(updated)
 
-    print(f"Added {len(all_events)} events to daily note")
+    if all_events:
+        print(f"Calendar section refreshed: {len(all_events)} events")
+    else:
+        print("Calendar section removed (no events today)")
     return 0
 
 
