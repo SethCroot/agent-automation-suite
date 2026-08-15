@@ -38,27 +38,30 @@ parse_config_flag() {
 
 # Load YAML config into shell variables prefixed with CFG_
 # Usage: load_config /path/to/config.yaml
+#
+# Delegates to lib/flatten_config.py: scalars become CFG_SECTION_KEY,
+# lists become indexed CFG_SECTION_KEY_0..N vars (what the
+# ${!CFG_BACKUP_EXTRA_PATHS_@} loops consume) plus a space-joined form.
+# Parse failures are loud (script exits) rather than silently running
+# on defaults — cf. issue #3.
 load_config() {
     local config_file="${1:-$(dirname "${BASH_SOURCE[0]:-$0}")/../config/config.yaml}"
+    local flatten_script
+    flatten_script="$(dirname "${BASH_SOURCE[0]}")/flatten_config.py"
     if [ ! -f "$config_file" ]; then
         echo "ERROR: Config file not found: $config_file" >&2
         echo "Copy config/config.example.yaml to config/config.yaml and edit it." >&2
         exit 1
     fi
-    # Simple YAML parsing: read key: value pairs (2-space indent = section.key)
-    eval "$(python3 -c "
-import yaml, sys
-with open('$config_file') as f:
-    data = yaml.safe_load(f)
-def flatten(d, prefix=''):
-    for k, v in d.items():
-        key = f'{prefix}{k}'.upper().replace('-', '_').replace('.', '_')
-        if isinstance(v, dict):
-            flatten(v, prefix + k + '_')
-        elif isinstance(v, (str, int, float, bool)):
-            print(f'export CFG_{key}=\"{v}\"')
-flatten(data)
-" 2>/dev/null)" || true
+    # eval the flattener output; if the flattener itself fails (bad YAML,
+    # unreadable file) eval sees empty input and succeeds — so guard it
+    # explicitly and fail loudly instead of running on defaults (issue #3)
+    local flattened
+    if ! flattened="$(python3 "$flatten_script" "$config_file")"; then
+        echo "ERROR: Failed to parse config: $config_file (see above)" >&2
+        exit 1
+    fi
+    eval "$flattened"
 }
 
 # ─── Path resolution ─────────────────────────────────────────────────
