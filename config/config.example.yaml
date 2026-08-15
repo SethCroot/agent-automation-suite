@@ -74,3 +74,14 @@ kanban:
     - In Progress
     - Blocked
     - Done
+
+# Notification adapter (issue #6) — pipe any script's output through
+# lib/notify.sh to deliver via a push backend instead of cron mail:
+#   ./monitoring/system-status.sh | lib/notify.sh
+notify:
+  # ntfy | discord | slack | stdout (default; plain passthrough)
+  backend: stdout
+  # Webhook/topic URL for the chosen backend (required for non-stdout)
+  # url: https://ntfy.example.com/agent-alerts
+  # Optional title shown by ntfy/slack
+  title: "automation suite"
