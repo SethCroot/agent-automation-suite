@@ -22,12 +22,12 @@ import argparse
 import json
 import os
 import sys
-import urllib3
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
+import urllib3
 import yaml
 
 urllib3.disable_warnings()
