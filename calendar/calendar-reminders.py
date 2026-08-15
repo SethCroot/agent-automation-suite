@@ -29,7 +29,6 @@ from pathlib import Path
 
 import requests
 import yaml
-from requests.auth import HTTPBasicAuth
 
 urllib3.disable_warnings()
 
